@@ -1,0 +1,84 @@
+name: Update Formula
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version to update to"
+        required: true
+        type: string
+
+jobs:
+  update-formula:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Fetch package info and generate formula
+        run: |
+          python3 << 'PYEOF'
+          import json, urllib.request
+
+          version = "${{ inputs.version }}"
+          url = f"https://pypi.org/pypi/py-claudebridge/{version}/json"
+
+          with urllib.request.urlopen(url) as resp:
+              data = json.loads(resp.read())
+
+          sdist_url = ""
+          sdist_sha256 = ""
+          for url_info in data["urls"]:
+              if url_info["packagetype"] == "sdist":
+                  sdist_url = url_info["url"]
+                  sdist_sha256 = url_info["digests"]["sha256"]
+                  break
+
+          if not sdist_url:
+              raise RuntimeError(f"No sdist found for py-claudebridge {version}")
+
+          formula = "\n".join([
+              'class Claudebridge < Formula',
+              '  include Language::Python::Virtualenv',
+              '',
+              '  desc "Bridge OpenAI tools to Claude Code SDK"',
+              '  homepage "https://github.com/tsilva/claudebridge"',
+              f'  url "{sdist_url}"',
+              f'  sha256 "{sdist_sha256}"',
+              '  license "MIT"',
+              '',
+              '  depends_on "python@3.13"',
+              '',
+              '  def install',
+              '    venv = virtualenv_create(libexec, "python3.13")',
+              '    venv.pip_install "py-claudebridge==#{version}"',
+              '    bin.install_symlink Dir[libexec/"bin/claudebridge"]',
+              '  end',
+              '',
+              '  test do',
+              '    assert_match "claudebridge", shell_output("#{bin}/claudebridge --version")',
+              '  end',
+              'end',
+              '',
+          ])
+
+          with open("Formula/claudebridge.rb", "w") as f:
+              f.write(formula)
+
+          print(f"Updated formula to version {version}")
+          print(f"URL: {sdist_url}")
+          print(f"SHA256: {sdist_sha256}")
+          PYEOF
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/claudebridge.rb
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "Update claudebridge to ${{ inputs.version }}"
+          git push
