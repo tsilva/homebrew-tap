@@ -25,3 +25,7 @@ brew upgrade <formula-name>
 | Formula | Description |
 |---------|-------------|
 | [claudebridge](https://github.com/tsilva/claudebridge) | Bridge OpenAI tools to Claude Code SDK |
+
+## License
+
+MIT
